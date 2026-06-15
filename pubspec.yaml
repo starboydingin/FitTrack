@@ -1,0 +1,61 @@
+name: fitness_tracker
+description: Aplikasi Monitoring Aktivitas Fisik - Flutter
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── State Management ──────────────────────────────────────────────────────
+  flutter_bloc: ^8.1.3
+  flutter_riverpod: ^2.4.9
+  equatable: ^2.0.5
+
+  # ── Typography ────────────────────────────────────────────────────────────
+  google_fonts: ^6.1.0
+
+  # ── Sensor & Hardware ────────────────────────────────────────────────────
+  pedometer: ^4.0.2
+  geolocator: ^11.0.0
+  sensors_plus: ^4.0.2
+  permission_handler: ^11.3.0
+
+  # ── Local Database (Offline Storage) ─────────────────────────────────────
+  sqflite: ^2.3.2
+  path: ^1.9.0
+
+  # ── Networking & API ─────────────────────────────────────────────────────
+  dio: ^5.4.0
+  connectivity_plus: ^6.0.3
+
+  # ── Secure Local Storage (token JWT) ─────────────────────────────────────
+  flutter_secure_storage: ^9.0.0
+
+  # ── Navigasi ─────────────────────────────────────────────────────────────
+  go_router: ^13.2.0
+
+  # ── Charting (grafik riwayat) ─────────────────────────────────────────────
+  fl_chart: ^0.68.0
+
+  # ── Utilities ─────────────────────────────────────────────────────────────
+  uuid: ^4.3.3
+  intl: ^0.19.0
+
+  # ── UI ────────────────────────────────────────────────────────────────────
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mocktail: ^1.0.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
