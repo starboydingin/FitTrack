@@ -52,10 +52,10 @@ class SyncState {
     int? retryCount,
   }) {
     return SyncState(
-      status:       status ?? this.status,
+      status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
-      retryCount:   retryCount ?? this.retryCount,
+      retryCount: retryCount ?? this.retryCount,
     );
   }
 
@@ -88,14 +88,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   SyncNotifier(this._apiClient) : super(const SyncState()) {
-    // Saat dummy mode aktif, tidak ada backend — skip semua network call.
-    if (!kUseDummyMode) {
-      checkAndSync();
+    checkAndSync();
 
-      _connectivitySubscription = Connectivity()
-          .onConnectivityChanged
-          .listen(_onConnectivityChanged);
-    }
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
   }
 
   // ── Connectivity Listener ────────────────────────────────────────────────
@@ -122,8 +118,6 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   /// Cek koneksi lalu jalankan sync jika online.
   Future<void> checkAndSync() async {
-    if (kUseDummyMode) return; // tidak ada backend saat dummy mode
-
     final online = await _isOnline();
     if (!online) {
       state = state.copyWith(status: SyncStatus.waitingConnection);
@@ -134,31 +128,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   /// Upload semua data lokal yang belum tersinkron ke backend.
   Future<void> syncUnsyncedData() async {
-    if (kUseDummyMode) {
-      // Dummy: pura-pura sync berhasil setelah jeda singkat
-      state = state.copyWith(status: SyncStatus.syncing, errorMessage: null);
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-      final unsynced = await LocalDatabase.getUnsyncedActivities();
-      if (unsynced.isNotEmpty) {
-        final ids = unsynced.map((m) => m['local_id'] as String).toList();
-        await LocalDatabase.updateSyncStatus(ids, 'synced');
-      }
-      state = state.copyWith(
-        status:       SyncStatus.success,
-        lastSyncedAt: DateTime.now(),
-        retryCount:   0,
-        errorMessage: null,
-      );
-      return;
-    }
-
     final unsynced = await LocalDatabase.getUnsyncedActivities();
     if (unsynced.isEmpty) {
       // Tidak ada yang perlu dikirim
       state = state.copyWith(
-        status:      SyncStatus.success,
+        status: SyncStatus.success,
         lastSyncedAt: state.lastSyncedAt ?? DateTime.now(),
-        retryCount:  0,
+        retryCount: 0,
         errorMessage: null,
       );
       return;
@@ -181,10 +157,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
       final response = await _apiClient.post(
         '/activities/sync',
         data: {
-          'deviceId':     deviceId,
+          'deviceId': deviceId,
           'lastSyncedAt': state.lastSyncedAt?.toIso8601String() ??
               DateTime.now().toIso8601String(),
-          'activities':   activitiesList,
+          'activities': activitiesList,
         },
       );
 
@@ -202,9 +178,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
         }
 
         state = state.copyWith(
-          status:       SyncStatus.success,
+          status: SyncStatus.success,
           lastSyncedAt: DateTime.now(),
-          retryCount:   0,
+          retryCount: 0,
           errorMessage: null,
         );
       } else {
@@ -226,9 +202,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
   void _handleSyncFailure(List<String> localIds, String message) {
     final newRetryCount = state.retryCount + 1;
     state = state.copyWith(
-      status:       SyncStatus.failed,
+      status: SyncStatus.failed,
       errorMessage: message,
-      retryCount:   newRetryCount,
+      retryCount: newRetryCount,
     );
 
     if (newRetryCount < kSyncRetryMax) {
@@ -243,18 +219,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   /// Ambil semua data aktivitas dari cloud dan simpan ke lokal.
   Future<void> restoreCloudData() async {
-    if (kUseDummyMode) {
-      // Dummy: tidak ada cloud, tampilkan pesan informatif
-      state = state.copyWith(
-        status:       SyncStatus.neverSynced,
-        errorMessage: 'Restore tidak tersedia di dummy mode.',
-      );
-      return;
-    }
-
     if (!(await _isOnline())) {
       state = state.copyWith(
-        status:       SyncStatus.waitingConnection,
+        status: SyncStatus.waitingConnection,
         errorMessage: 'Tidak ada koneksi internet.',
       );
       return;
@@ -264,35 +231,32 @@ class SyncNotifier extends StateNotifier<SyncState> {
     try {
       final response = await _apiClient.get('/activities/restore');
       if (response.statusCode == 200 && response.data['success'] == true) {
-        final List activitiesRaw =
-            response.data['data']['activities'] ?? [];
+        final List activitiesRaw = response.data['data']['activities'] ?? [];
 
         await LocalDatabase.clearAllActivities();
 
         for (final actRaw in activitiesRaw) {
-          final model =
-              ActivityModel.fromJson(actRaw as Map<String, dynamic>);
+          final model = ActivityModel.fromJson(actRaw as Map<String, dynamic>);
           final dbMap = model.toDbMap();
           dbMap['sync_status'] = 'synced';
           await LocalDatabase.insertActivity(dbMap);
         }
 
         state = state.copyWith(
-          status:       SyncStatus.success,
+          status: SyncStatus.success,
           lastSyncedAt: DateTime.now(),
-          retryCount:   0,
+          retryCount: 0,
           errorMessage: null,
         );
       } else {
         state = state.copyWith(
-          status:       SyncStatus.failed,
-          errorMessage:
-              response.data['message'] ?? 'Gagal memulihkan data.',
+          status: SyncStatus.failed,
+          errorMessage: response.data['message'] ?? 'Gagal memulihkan data.',
         );
       }
     } catch (e) {
       state = state.copyWith(
-        status:       SyncStatus.failed,
+        status: SyncStatus.failed,
         errorMessage: e.toString().replaceAll('Exception: ', ''),
       );
     }
@@ -307,8 +271,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
-final syncProvider =
-    StateNotifierProvider<SyncNotifier, SyncState>((ref) {
+final syncProvider = StateNotifierProvider<SyncNotifier, SyncState>((ref) {
   final apiClient = ref.watch(apiClientProvider);
   return SyncNotifier(apiClient);
 });

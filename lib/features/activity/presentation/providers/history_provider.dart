@@ -1,6 +1,5 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/local_database.dart';
 import '../../data/models/activity_model.dart';
@@ -20,9 +19,9 @@ class HistoryItem {
   });
 
   factory HistoryItem.fromJson(Map<String, dynamic> json) => HistoryItem(
-        date:                 json['date'] as String,
-        totalSteps:           (json['totalSteps'] ?? 0) as int,
-        totalDistanceMeters:   (json['totalDistanceMeters'] ?? 0) as int,
+        date: json['date'] as String,
+        totalSteps: (json['totalSteps'] ?? 0) as int,
+        totalDistanceMeters: (json['totalDistanceMeters'] ?? 0) as int,
         dominantActivityType: json['dominantActivityType'] ?? 'idle',
       );
 }
@@ -47,10 +46,10 @@ class HistoryState {
     bool? isOffline,
   }) {
     return HistoryState(
-      isLoading:    isLoading ?? this.isLoading,
-      items:        items ?? this.items,
+      isLoading: isLoading ?? this.isLoading,
+      items: items ?? this.items,
       errorMessage: errorMessage ?? this.errorMessage,
-      isOffline:    isOffline ?? this.isOffline,
+      isOffline: isOffline ?? this.isOffline,
     );
   }
 }
@@ -65,28 +64,30 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
   Future<void> fetchHistory(String period) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
-    // Dummy mode atau offline → baca dari lokal, skip network
-    if (kUseDummyMode) {
-      await _fetchHistoryOffline();
-      return;
-    }
-
     final connectivityResult = await Connectivity().checkConnectivity();
-    final isOnline = connectivityResult.any((r) => r != ConnectivityResult.none);
+    final isOnline =
+        connectivityResult.any((r) => r != ConnectivityResult.none);
     if (!isOnline) {
       await _fetchHistoryOffline();
       return;
     }
 
     try {
+      final dateRange = _buildDateRange(period);
       final response = await _apiClient.get(
         '/activities/history',
-        queryParameters: {'period': period},
+        queryParameters: {
+          'period': period,
+          'startDate': dateRange.startDate,
+          'endDate': dateRange.endDate,
+        },
       );
 
       if (response.statusCode == 200 && response.data['success'] == true) {
         final List rawItems = response.data['data']['items'] ?? [];
-        final items = rawItems.map((j) => HistoryItem.fromJson(j as Map<String, dynamic>)).toList();
+        final items = rawItems
+            .map((j) => HistoryItem.fromJson(j as Map<String, dynamic>))
+            .toList();
         state = HistoryState(items: items, isOffline: false);
       } else {
         await _fetchHistoryOffline();
@@ -120,7 +121,8 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
         for (final act in list) {
           steps += act.steps;
           distance += act.distanceMeters;
-          counts[act.activityType] = (counts[act.activityType] ?? 0) + act.steps;
+          counts[act.activityType] =
+              (counts[act.activityType] ?? 0) + act.steps;
         }
 
         // Tentukan jenis aktivitas dominan berdasarkan jumlah langkah terbanyak
@@ -134,9 +136,9 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
         });
 
         items.add(HistoryItem(
-          date:                 date,
-          totalSteps:           steps,
-          totalDistanceMeters:   distance,
+          date: date,
+          totalSteps: steps,
+          totalDistanceMeters: distance,
           dominantActivityType: dominant,
         ));
       });
@@ -154,7 +156,8 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
   }
 }
 
-final historyProvider = StateNotifierProvider<HistoryNotifier, HistoryState>((ref) {
+final historyProvider =
+    StateNotifierProvider<HistoryNotifier, HistoryState>((ref) {
   final apiClient = ref.watch(apiClientProvider);
   return HistoryNotifier(apiClient);
 });
@@ -190,13 +193,13 @@ class DailyDetailState {
     String? errorMessage,
   }) {
     return DailyDetailState(
-      isLoading:            isLoading ?? this.isLoading,
-      date:                 date ?? this.date,
-      totalSteps:           totalSteps ?? this.totalSteps,
-      totalDistanceMeters:   totalDistanceMeters ?? this.totalDistanceMeters,
+      isLoading: isLoading ?? this.isLoading,
+      date: date ?? this.date,
+      totalSteps: totalSteps ?? this.totalSteps,
+      totalDistanceMeters: totalDistanceMeters ?? this.totalDistanceMeters,
       dominantActivityType: dominantActivityType ?? this.dominantActivityType,
-      timeline:             timeline ?? this.timeline,
-      errorMessage:         errorMessage ?? this.errorMessage,
+      timeline: timeline ?? this.timeline,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -205,21 +208,17 @@ class DailyDetailNotifier extends StateNotifier<DailyDetailState> {
   final ApiClient _apiClient;
   final String _date;
 
-  DailyDetailNotifier(this._apiClient, this._date) : super(const DailyDetailState()) {
+  DailyDetailNotifier(this._apiClient, this._date)
+      : super(const DailyDetailState()) {
     fetchDetail();
   }
 
   Future<void> fetchDetail() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
-    // Dummy mode → baca dari lokal, skip network
-    if (kUseDummyMode) {
-      await _fetchDetailOffline();
-      return;
-    }
-
     final connectivityResult = await Connectivity().checkConnectivity();
-    final isOnline = connectivityResult.any((r) => r != ConnectivityResult.none);
+    final isOnline =
+        connectivityResult.any((r) => r != ConnectivityResult.none);
     if (!isOnline) {
       await _fetchDetailOffline();
       return;
@@ -231,14 +230,22 @@ class DailyDetailNotifier extends StateNotifier<DailyDetailState> {
       if (response.statusCode == 200 && response.data['success'] == true) {
         final data = response.data['data'];
         final List rawTimeline = data['timeline'] ?? [];
-        final timeline = rawTimeline.map((t) => ActivityModel.fromJson(t as Map<String, dynamic>)).toList();
+        final timeline = rawTimeline.asMap().entries.map((entry) {
+          final raw = Map<String, dynamic>.from(
+            entry.value as Map<String, dynamic>,
+          );
+          raw['localId'] ??= 'server-$_date-${entry.key}';
+          raw['activityDate'] ??= _date;
+          raw['recordedAt'] ??= raw['endedAt'] ?? raw['startedAt'];
+          return ActivityModel.fromJson(raw);
+        }).toList();
 
         state = DailyDetailState(
-          date:                 _date,
-          totalSteps:           (data['totalSteps'] ?? 0) as int,
-          totalDistanceMeters:   (data['totalDistanceMeters'] ?? 0) as int,
+          date: _date,
+          totalSteps: (data['totalSteps'] ?? 0) as int,
+          totalDistanceMeters: (data['totalDistanceMeters'] ?? 0) as int,
           dominantActivityType: data['dominantActivityType'] ?? 'idle',
-          timeline:             timeline,
+          timeline: timeline,
         );
       } else {
         await _fetchDetailOffline();
@@ -277,11 +284,11 @@ class DailyDetailNotifier extends StateNotifier<DailyDetailState> {
       });
 
       state = DailyDetailState(
-        date:                 _date,
-        totalSteps:           steps,
-        totalDistanceMeters:   distance,
+        date: _date,
+        totalSteps: steps,
+        totalDistanceMeters: distance,
         dominantActivityType: dominant,
-        timeline:             timeline,
+        timeline: timeline,
       );
     } catch (e) {
       state = state.copyWith(
@@ -291,7 +298,26 @@ class DailyDetailNotifier extends StateNotifier<DailyDetailState> {
   }
 }
 
-final dailyDetailProvider = StateNotifierProvider.family<DailyDetailNotifier, DailyDetailState, String>((ref, date) {
+final dailyDetailProvider =
+    StateNotifierProvider.family<DailyDetailNotifier, DailyDetailState, String>(
+        (ref, date) {
   final apiClient = ref.watch(apiClientProvider);
   return DailyDetailNotifier(apiClient, date);
 });
+
+({String startDate, String endDate}) _buildDateRange(String period) {
+  final today = DateTime.now();
+  final days = period == 'monthly' ? 30 : 7;
+  final start = today.subtract(Duration(days: days - 1));
+  return (
+    startDate: _dateOnly(start),
+    endDate: _dateOnly(today),
+  );
+}
+
+String _dateOnly(DateTime date) {
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
+}

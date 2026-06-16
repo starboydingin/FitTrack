@@ -1,9 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
-import '../../data/repositories/dummy_auth_repository.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 
@@ -13,12 +11,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient();
 });
 
-/// Toggle antara DummyAuthRepository dan AuthRepositoryImpl
-/// berdasarkan flag `kUseDummyMode` di app_constants.dart.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  if (kUseDummyMode) {
-    return DummyAuthRepository();
-  }
   final apiClient = ref.watch(apiClientProvider);
   final remoteDataSource = AuthRemoteDataSource(apiClient);
   return AuthRepositoryImpl(remoteDataSource, apiClient);
