@@ -16,25 +16,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _weightCtrl;
   late final TextEditingController _heightCtrl;
-  bool _isLoading = false;
+  bool _isSaving = false;
+  String? _errorText;
 
   @override
   void initState() {
     super.initState();
     final authState = ref.read(authStateProvider);
-    String initialName = '';
-    String initialWeight = '';
-    String initialHeight = '';
-
     if (authState is AuthAuthenticated) {
-      initialName = authState.user.name;
-      initialWeight = authState.user.weightKg?.toString() ?? '';
-      initialHeight = authState.user.heightCm?.toString() ?? '';
+      final user = authState.user;
+      _nameCtrl = TextEditingController(text: user.name);
+      _weightCtrl = TextEditingController(
+          text: user.weightKg != null ? user.weightKg.toString() : '');
+      _heightCtrl = TextEditingController(
+          text: user.heightCm != null ? user.heightCm.toString() : '');
+    } else {
+      _nameCtrl = TextEditingController();
+      _weightCtrl = TextEditingController();
+      _heightCtrl = TextEditingController();
     }
-
-    _nameCtrl = TextEditingController(text: initialName);
-    _weightCtrl = TextEditingController(text: initialWeight);
-    _heightCtrl = TextEditingController(text: initialHeight);
   }
 
   @override
@@ -45,39 +45,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     super.dispose();
   }
 
-  void _submit() async {
+  Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
+    setState(() {
+      _errorText = null;
+      _isSaving = true;
+    });
     try {
       await ref.read(authStateProvider.notifier).updateProfile(
-            name:     _nameCtrl.text.trim(),
-            weightKg: double.parse(_weightCtrl.text),
-            heightCm: double.parse(_heightCtrl.text),
+            name: _nameCtrl.text.trim(),
+            weightKg: double.tryParse(_weightCtrl.text.trim()),
+            heightCm: double.tryParse(_heightCtrl.text.trim()),
           );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profil berhasil diperbarui!'),
-            backgroundColor: AppColors.secondary,
-          ),
-        );
-        Navigator.pop(context);
-      }
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal memperbarui profil: ${e.toString().replaceAll('Exception: ', '')}'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _errorText = e.toString().replaceAll('Exception: ', '');
+          _isSaving = false;
+        });
       }
     }
   }
@@ -85,117 +71,177 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Edit Profil'),
-      ),
+      backgroundColor: DSColors.brandTealDeep,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(DSSpacing.page),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Perbarui Informasi Fisik',
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.03 * 20,
+                // Back + Title row
+                Row(children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius:
+                            BorderRadius.circular(DSRadius.sensorChip),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.12),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: const Icon(Icons.arrow_back_ios_new,
+                          size: 18, color: DSColors.onDark),
+                    ),
                   ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Edit Profil',
+                    style: GoogleFonts.sora(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: DSColors.onDark,
+                      letterSpacing: -0.01 * 22,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 28),
+
+                // Error
+                if (_errorText != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: DSColors.errorDark.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(DSRadius.control),
+                      border: Border.all(
+                          color: DSColors.errorDark.withOpacity(0.3)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.error_outline_rounded,
+                          color: DSColors.errorDark, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorText!,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: DSColors.errorDark,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // Name
+                TextFormField(
+                  controller: _nameCtrl,
+                  style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: DSColors.onDark),
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Lengkap',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Nama wajib diisi';
+                    return null;
+                  },
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Perubahan data fisik akan langsung memperbarui kalkulasi Indeks Massa Tubuh (BMI) Anda.',
+                const SizedBox(height: 16),
+
+                // Weight
+                TextFormField(
+                  controller: _weightCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: DSColors.onDark),
+                  decoration: const InputDecoration(
+                    labelText: 'Berat Badan (kg)',
+                    prefixIcon: Icon(Icons.scale_outlined),
                   ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null; // optional
+                    final val = double.tryParse(v.trim());
+                    if (val == null || val <= 0) return 'Harus angka positif';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Height
+                TextFormField(
+                  controller: _heightCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: DSColors.onDark),
+                  decoration: const InputDecoration(
+                    labelText: 'Tinggi Badan (cm)',
+                    prefixIcon: Icon(Icons.height_outlined),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return null; // optional
+                    final val = double.tryParse(v.trim());
+                    if (val == null || val <= 0) return 'Harus angka positif';
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 28),
 
-                // Name Input
-                TextFormField(
-                  controller: _nameCtrl,
-                  keyboardType: TextInputType.name,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    hintText: 'Nama Lengkap',
-                    prefixIcon: Icon(Icons.person_outline, color: AppColors.textSecondary),
+                // Save button
+                SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _handleSave,
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  DSColors.onPrimaryDark),
+                            ),
+                          )
+                        : Text(
+                            'Simpan',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Nama lengkap wajib diisi.';
-                    return null;
-                  },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Weight Input
-                TextFormField(
-                  controller: _weightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    hintText: 'Berat Badan (kg)',
-                    prefixIcon: Icon(Icons.monitor_weight_outlined, color: AppColors.textSecondary),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Berat badan wajib diisi.';
-                    final val = double.tryParse(v);
-                    if (val == null || val <= 0) return 'Berat badan harus angka positif.';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Height Input
-                TextFormField(
-                  controller: _heightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(
-                    hintText: 'Tinggi Badan (cm)',
-                    prefixIcon: Icon(Icons.height_rounded, color: AppColors.textSecondary),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Tinggi badan wajib diisi.';
-                    final val = double.tryParse(v);
-                    if (val == null || val <= 0) return 'Tinggi badan harus angka positif.';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 32),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _isLoading ? null : () => Navigator.pop(context),
-                        child: const Text('Batal'),
+                // Cancel button
+                SizedBox(
+                  height: 52,
+                  child: OutlinedButton(
+                    onPressed: _isSaving ? null : () => Navigator.pop(context),
+                    child: Text(
+                      'Batal',
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _submit,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Simpan'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),

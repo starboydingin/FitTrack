@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,6 +18,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _obscurePass = true;
+  String? _errorText;
 
   @override
   void dispose() {
@@ -25,179 +27,216 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
-    ref.read(authStateProvider.notifier).login(
-          _emailCtrl.text.trim(),
-          _passCtrl.text,
-        );
+    setState(() => _errorText = null);
+    try {
+      await ref.read(authStateProvider.notifier).login(
+            _emailCtrl.text.trim(),
+            _passCtrl.text,
+          );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorText = e.toString().replaceAll('Exception: ', ''));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authStateProvider);
-
-    // Dapatkan pesan error jika ada
-    String? errorMessage;
-    if (authState is AuthUnauthenticated) {
-      errorMessage = authState.errorMessage;
-    }
+    final isLoading = ref.watch(authStateProvider) is AuthLoading;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: DSColors.brandTealDeep,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            padding: const EdgeInsets.all(DSSpacing.page),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo / Shield Icon
+                  // Glass logo
                   Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: AppColors.secondaryPale,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: const Icon(
-                        Icons.directions_run_rounded,
-                        color: AppColors.primary,
-                        size: 44,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(DSRadius.frame),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius:
+                                BorderRadius.circular(DSRadius.frame),
+                            border: Border.all(
+                              color: DSColors.primaryDark.withOpacity(0.25),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.directions_run_rounded,
+                                size: 40, color: DSColors.primaryDark),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  // App Name
+                  const SizedBox(height: 20),
+
+                  // Title
                   Text(
                     'FitTrack',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primary,
-                      letterSpacing: -0.04 * 28,
+                    style: GoogleFonts.sora(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: DSColors.onDark,
+                      letterSpacing: -0.01 * 24,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
+
+                  // Subtitle
                   Text(
-                    'Masuk untuk memantau aktivitas fisik Anda',
+                    'Masuk ke akun Anda',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      color: DSColors.onDarkMuted,
                     ),
                   ),
                   const SizedBox(height: 36),
 
-                  if (errorMessage != null) ...[
+                  // Error banner
+                  if (_errorText != null) ...[
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.danger.withOpacity(0.3)),
+                        color: DSColors.errorDark.withOpacity(0.10),
+                        borderRadius:
+                            BorderRadius.circular(DSRadius.control),
+                        border: Border.all(
+                            color: DSColors.errorDark.withOpacity(0.3)),
                       ),
-                      child: Text(
-                        errorMessage,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: AppColors.danger,
-                          fontWeight: FontWeight.w500,
+                      child: Row(children: [
+                        const Icon(Icons.error_outline_rounded,
+                            color: DSColors.errorDark, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorText!,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: DSColors.errorDark,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
+                      ]),
                     ),
                     const SizedBox(height: 16),
                   ],
 
-                  // Email Input
+                  // Email
                   TextFormField(
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
+                    style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: DSColors.onDark),
                     decoration: const InputDecoration(
-                      hintText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined, color: AppColors.textSecondary),
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Email wajib diisi.';
-                      if (!v.contains('@')) return 'Format email tidak valid.';
+                      if (v == null || v.trim().isEmpty) return 'Email wajib diisi';
+                      if (!v.contains('@')) return 'Format email tidak valid';
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  // Password Input
+                  // Password
                   TextFormField(
                     controller: _passCtrl,
                     obscureText: _obscurePass,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(),
+                    style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: DSColors.onDark),
                     decoration: InputDecoration(
-                      hintText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                          color: AppColors.textSecondary,
-                        ),
-                        onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                        icon: Icon(_obscurePass
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        color: DSColors.onDarkMuted,
+                        onPressed: () =>
+                            setState(() => _obscurePass = !_obscurePass),
                       ),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Password wajib diisi.';
+                      if (v == null || v.isEmpty) return 'Password wajib diisi';
                       return null;
                     },
                   ),
                   const SizedBox(height: 28),
 
-                  // Login Button
-                  ElevatedButton(
-                    onPressed: authState is AuthLoading ? null : _submit,
-                    child: authState is AuthLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                  // Login button
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: isLoading ? null : _handleLogin,
+                      child: isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    DSColors.onPrimaryDark),
+                              ),
+                            )
+                          : Text(
+                              'Masuk',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          )
-                        : const Text('Masuk'),
+                    ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                  // Register Link
+                  // Register link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         'Belum punya akun? ',
                         style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          color: DSColors.onDarkMuted,
                         ),
                       ),
                       GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const RegisterPage()),
-                          );
-                        },
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const RegisterPage()),
+                        ),
                         child: Text(
                           'Daftar',
                           style: GoogleFonts.inter(
-                            fontSize: 14,
-                            color: AppColors.secondary,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: DSColors.primaryDark,
                           ),
                         ),
                       ),

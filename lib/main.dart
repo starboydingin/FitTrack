@@ -27,7 +27,7 @@ class FitnessTrackerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FitTrack',
-      theme: AppTheme.light,
+      theme: AppTheme.dark,
       debugShowCheckedModeBanner: false,
       home: const RootNavigator(),
     );
@@ -79,8 +79,8 @@ class _RootNavigatorState extends ConsumerState<RootNavigator> {
 
     if (authState is AuthLoading) {
       return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: DSColors.brandTealDeep,
+        body: Center(child: CircularProgressIndicator(color: DSColors.primaryDark)),
       );
     }
 
@@ -109,8 +109,8 @@ class _RootNavigatorState extends ConsumerState<RootNavigator> {
     }
 
     return const Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(child: CircularProgressIndicator()),
+      backgroundColor: DSColors.brandTealDeep,
+      body: Center(child: CircularProgressIndicator(color: DSColors.primaryDark)),
     );
   }
 }

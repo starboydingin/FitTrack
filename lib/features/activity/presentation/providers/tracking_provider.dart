@@ -97,6 +97,44 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  /// Pause sensor subscriptions when the app goes to background.
+  /// Sensor streams become stale when the OS suspends the process,
+  /// so we cancel them and re-subscribe on resume.
+  void pauseSensors() {
+    if (!state.isTracking) return;
+    _webFallbackTimer?.cancel();
+    _webFallbackTimer = null;
+    _pedometerSubscription?.cancel();
+    _pedometerSubscription = null;
+    _gpsSubscription?.cancel();
+    _gpsSubscription = null;
+    _accelSubscription?.cancel();
+    _accelSubscription = null;
+  }
+
+  /// Re-subscribe to sensors after returning from background.
+  /// Resets _initialSteps so the pedometer baseline is recalibrated.
+  Future<void> resumeSensors() async {
+    if (!state.isTracking) return;
+    // Ensure clean slate
+    _webFallbackTimer?.cancel();
+    _webFallbackTimer = null;
+    _pedometerSubscription?.cancel();
+    _pedometerSubscription = null;
+    _gpsSubscription?.cancel();
+    _gpsSubscription = null;
+    _accelSubscription?.cancel();
+    _accelSubscription = null;
+    // Reset baseline so next pedometer event recalibrates
+    _initialSteps = null;
+
+    if (kIsWeb) {
+      _startWebFallback();
+    } else {
+      await _startNativeSensors();
+    }
+  }
+
   Future<void> startTracking() async {
     if (state.isTracking) return;
 
@@ -137,21 +175,27 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     final endTime = DateTime.now();
 
     // Simpan ke lokal (SQLite di mobile, in-memory di Web)
-    if (state.localId != null && state.startTime != null) {
-      final activity = ActivityModel(
-        localId: state.localId!,
-        activityDate: state.startTime!.toIso8601String().split('T')[0],
-        startedAt: state.startTime!,
-        endedAt: endTime,
-        steps: state.steps,
-        distanceMeters: state.distanceMeters,
-        activityType: state.activityType,
-        latitude: state.latitude,
-        longitude: state.longitude,
-        recordedAt: endTime,
-        syncStatus: 'pending',
-      );
-      await LocalDatabase.insertActivity(activity.toDbMap());
+    // Wrap DB write in try-catch so a failed write never prevents state reset
+    try {
+      if (state.localId != null && state.startTime != null) {
+        final activity = ActivityModel(
+          localId: state.localId!,
+          activityDate: state.startTime!.toIso8601String().split('T')[0],
+          startedAt: state.startTime!,
+          endedAt: endTime,
+          steps: state.steps,
+          distanceMeters: state.distanceMeters,
+          activityType: state.activityType,
+          latitude: state.latitude,
+          longitude: state.longitude,
+          recordedAt: endTime,
+          syncStatus: 'pending',
+        );
+        await LocalDatabase.insertActivity(activity.toDbMap());
+      }
+    } catch (_) {
+      // Silently continue — the activity data may be lost but the UI
+      // must recover gracefully instead of being stuck in tracking state.
     }
 
     state = const TrackingState(isTracking: false);

@@ -13,7 +13,7 @@ class ActivityPage extends ConsumerStatefulWidget {
   ConsumerState<ActivityPage> createState() => _ActivityPageState();
 }
 
-class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerProviderStateMixin {
+class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   bool _isPaused = false;
   int _pausedStepsOffset = 0;
@@ -26,12 +26,30 @@ class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerPr
       vsync: this,
       duration: const Duration(seconds: 2),
     );
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    final tracking = ref.read(trackingProvider);
+    if (!tracking.isTracking) return;
+
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      // Pause sensor subscriptions to avoid stale/dead streams
+      ref.read(trackingProvider.notifier).pauseSensors();
+    } else if (state == AppLifecycleState.resumed) {
+      // Re-subscribe sensors with fresh baseline
+      ref.read(trackingProvider.notifier).resumeSensors();
+    }
   }
 
   @override
@@ -48,334 +66,335 @@ class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerPr
       _pulseController.stop();
     }
 
-    final displaySteps = _isPaused
-        ? _pausedStepsOffset
-        : trackingState.steps;
-    final displayDistanceMeters = _isPaused
-        ? _pausedDistanceOffset
-        : trackingState.distanceMeters;
-
+    final displaySteps = _isPaused ? _pausedStepsOffset : trackingState.steps;
+    final displayDistanceMeters = _isPaused ? _pausedDistanceOffset : trackingState.distanceMeters;
     final displayDistanceKm = displayDistanceMeters / 1000.0;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Aktivitas Real-time'),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Hero Steps Card
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // Pulse Ring Animation wrapper
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppColors.secondary.withOpacity(
-                                  trackingState.isTracking && !_isPaused
-                                      ? 0.5 * (1.0 - _pulseController.value)
-                                      : 0.1
-                              ),
-                              width: 8 * _pulseController.value + 1,
-                            ),
-                          ),
-                          child: child,
-                        );
-                      },
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: const BoxDecoration(
-                          color: AppColors.secondary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.directions_run_rounded,
-                          color: Colors.white,
-                          size: 36,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'LANGKAH REAL-TIME',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.6),
-                        letterSpacing: 0.08 * 11,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      displaySteps.toString(),
-                      style: GoogleFonts.inter(
-                        fontSize: 52,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: -0.04 * 52,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Aktivitas: ${trackingState.isTracking && !_isPaused ? trackingState.activityType.toUpperCase() : "NONAKTIF"}',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.secondaryPale,
-                      ),
-                    ),
-                  ],
-                ),
+      backgroundColor: DSColors.brandTealDeep,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _GridPainter(
+                color: Colors.white.withOpacity(0.03),
+                spacing: 40,
               ),
-              const SizedBox(height: 16),
-
-              // Jarak, Durasi, GPS 2-Column Cards
-              Row(
+            ),
+          ),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(DSSpacing.page),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _buildMetricCard(
-                      title: 'ESTIMASI JARAK',
-                      value: '${displayDistanceKm.toStringAsFixed(2)} km',
-                      subtitle: '$displayDistanceMeters meter',
-                      icon: Icons.map_outlined,
+                  Text('Aktivitas Real-time', style: DSText.screenTitle()),
+                  const SizedBox(height: 24),
+                  GlassHeroCard(
+                    child: Column(
+                      children: [
+                        AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) {
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: DSColors.primaryDark.withOpacity(
+                                      trackingState.isTracking && !_isPaused
+                                          ? 0.5 * (1.0 - _pulseController.value)
+                                          : 0.1),
+                                  width: 8 * _pulseController.value + 1,
+                                ),
+                              ),
+                              child: child,
+                            );
+                          },
+                          child: Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: DSColors.primaryDark.withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.directions_run_rounded, color: DSColors.primaryDark, size: 32),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text('LANGKAH SAAT INI', style: DSText.sectionLabel(color: DSColors.onDarkMuted)),
+                        const SizedBox(height: 8),
+                        Text(displaySteps.toString(), style: DSText.stepCountRealtime()),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Aktivitas: ${trackingState.isTracking && !_isPaused ? trackingState.activityType.toUpperCase() : "NONAKTIF"}',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: DSColors.onDarkMuted),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildMetricCard(
-                      title: 'KUALITAS GPS',
-                      value: trackingState.latitude != null
-                          ? '${trackingState.gpsAccuracy?.toStringAsFixed(1) ?? 'ok'} m'
-                          : 'Tidak Aktif',
-                      subtitle: trackingState.latitude != null
-                          ? 'Akurasi GPS saat ini'
-                          : 'Lokasi belum tersedia',
-                      icon: Icons.gps_fixed_rounded,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // GPS Status / Coordinates
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
+                  const SizedBox(height: 12),
+                  Row(
                     children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: trackingState.latitude != null ? AppColors.secondary : AppColors.danger,
-                          shape: BoxShape.circle,
+                      Expanded(
+                        child: GlassCard(
+                          child: _buildMetricContent(
+                            title: 'GPS STATUS',
+                            value: trackingState.latitude != null
+                                ? '${trackingState.gpsAccuracy?.toStringAsFixed(1) ?? 'ok'} m'
+                                : 'Tidak Aktif',
+                            subtitle: trackingState.latitude != null ? 'Akurasi GPS saat ini' : 'Lokasi belum tersedia',
+                            icon: Icons.gps_fixed_rounded,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'KOORDINAT TERAKHIR',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textSecondary,
-                                letterSpacing: 0.08 * 9,
-                              ),
-                            ),
-                            Text(
-                              trackingState.latitude != null
-                                  ? '${trackingState.latitude!.toStringAsFixed(5)}° S, ${trackingState.longitude!.toStringAsFixed(5)}° E'
-                                  : 'Lokasi belum tersedia',
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ],
+                        child: GlassCard(
+                          child: _buildMetricContent(
+                            title: 'ESTIMASI JARAK',
+                            value: '${displayDistanceKm.toStringAsFixed(2)} km',
+                            subtitle: '$displayDistanceMeters meter',
+                            icon: Icons.map_outlined,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Accelerometer Raw Bars (X / Y / Z)
-              _buildAccelerometerCard(trackingState),
-              const SizedBox(height: 32),
-
-              // Action buttons row
-              if (!trackingState.isTracking) ...[
-                ElevatedButton(
-                  onPressed: permState.isMinimumGranted
-                      ? () {
-                          setState(() {
-                            _isPaused = false;
-                          });
-                          ref.read(trackingProvider.notifier).startTracking();
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                  ),
-                  child: const Text('Mulai Pelacakan'),
-                ),
-              ] else ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() {
-                            if (_isPaused) {
-                              _isPaused = false;
-                            } else {
-                              _isPaused = true;
-                              _pausedStepsOffset = trackingState.steps;
-                              _pausedDistanceOffset = trackingState.distanceMeters;
-                            }
-                          });
-                        },
-                        child: Text(_isPaused ? 'Lanjutkan' : 'Jeda'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          setState(() => _isPaused = false);
-                          await ref.read(trackingProvider.notifier).stopTracking();
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.danger,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                  const SizedBox(height: 12),
+                  GlassCard(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10, height: 10,
+                          decoration: BoxDecoration(
+                            color: trackingState.latitude != null ? DSColors.primaryDark : DSColors.errorDark,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        child: const Text('Selesai'),
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('KOORDINAT TERAKHIR', style: DSText.sectionLabel(color: DSColors.onDarkMuted)),
+                              const SizedBox(height: 4),
+                              Text(
+                                trackingState.latitude != null
+                                    ? '${trackingState.latitude!.toStringAsFixed(5)} S, ${trackingState.longitude!.toStringAsFixed(5)} E'
+                                    : 'Lokasi belum tersedia',
+                                style: DSText.coordinate(
+                                  color: trackingState.latitude != null ? DSColors.onDark : DSColors.onDarkMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildAccelerometerCard(trackingState),
+                  const SizedBox(height: 24),
+                  if (!trackingState.isTracking) ...[
+                    ElevatedButton(
+                      onPressed: permState.isMinimumGranted
+                          ? () {
+                              setState(() => _isPaused = false);
+                              ref.read(trackingProvider.notifier).startTracking();
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18)),
+                      child: const Text('Mulai Pelacakan'),
+                    ),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // ── Pause / Resume button (circular outline) ──
+                        _buildCircleOutlineButton(
+                          icon: _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                          label: _isPaused ? 'Lanjutkan' : 'Jeda',
+                          onPressed: () {
+                            setState(() {
+                              if (_isPaused) {
+                                _isPaused = false;
+                              } else {
+                                _isPaused = true;
+                                _pausedStepsOffset = trackingState.steps;
+                                _pausedDistanceOffset = trackingState.distanceMeters;
+                              }
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 24),
+                        // ── Stop / Done button (solid red circle) ──
+                        _buildCircleStopButton(
+                          onPressed: () async {
+                            setState(() => _isPaused = false);
+                            await ref.read(trackingProvider.notifier).stopTracking();
+                            // Only pop if we were pushed onto a route (e.g. from Dashboard).
+                            // When embedded in IndexedStack, canPop() is false —
+                            // the UI auto-updates via state, no navigation needed.
+                            if (context.mounted && Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
-              const SizedBox(height: 12),
-
-              // ── Sync Status + Tombol Sync Manual ──────────────────────────
-              _buildSyncSection(syncState),
-            ],
+                  const SizedBox(height: 12),
+                  _buildSyncSection(syncState),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
+  Widget _buildMetricContent({required String title, required String value, required String subtitle, required IconData icon}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: DSColors.primaryDark, size: 22),
+        const SizedBox(height: 10),
+        Text(title, style: DSText.sectionLabel(color: DSColors.onDarkMuted)),
+        const SizedBox(height: 4),
+        Text(value, style: GoogleFonts.jetBrainsMono(fontSize: 18, fontWeight: FontWeight.w600, color: DSColors.onDark)),
+        const SizedBox(height: 2),
+        Text(subtitle, style: DSText.caption(color: DSColors.onDarkMuted)),
+      ],
+    );
+  }
+
+  // ── Circular control buttons ──────────────────────────────────────────────
+
+  Widget _buildCircleOutlineButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            splashColor: DSColors.primaryDark.withOpacity(0.15),
+            highlightColor: DSColors.primaryDark.withOpacity(0.08),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.25),
+                  width: 2,
+                ),
+              ),
+              child: Icon(icon, color: DSColors.onDark, size: 30),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: DSColors.onDarkMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCircleStopButton({required VoidCallback onPressed}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            splashColor: Colors.white.withOpacity(0.20),
+            highlightColor: Colors.white.withOpacity(0.10),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: DSColors.errorDark,
+              ),
+              child: Center(
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Selesai',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: DSColors.onDark,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSyncSection(SyncState syncState) {
-    // Warna dan label sesuai dokumen ui-design.md
     Color dotColor;
     String label;
     switch (syncState.status) {
       case SyncStatus.neverSynced:
-        dotColor = AppColors.textMuted;
-        label = 'Belum tersinkron';
-        break;
+        dotColor = DSColors.onDarkMuted; label = 'Belum tersinkron'; break;
       case SyncStatus.waitingConnection:
-        dotColor = AppColors.warning;
-        label = 'Menunggu koneksi';
-        break;
+        dotColor = DSColors.accentOrange; label = 'Menunggu koneksi'; break;
       case SyncStatus.syncing:
-        dotColor = AppColors.warning;
-        label = 'Menyinkron...';
-        break;
+        dotColor = DSColors.accentOrange; label = 'Menyinkron...'; break;
       case SyncStatus.success:
-        dotColor = AppColors.secondary;
-        label = syncState.lastSyncedAt != null
-            ? 'Tersinkron ${_formatTime(syncState.lastSyncedAt!)}'
-            : 'Tersinkron';
+        dotColor = DSColors.primaryDark;
+        label = syncState.lastSyncedAt != null ? 'Tersinkron ${_formatTime(syncState.lastSyncedAt!)}' : 'Tersinkron';
         break;
       case SyncStatus.failed:
-        dotColor = AppColors.danger;
-        label = 'Gagal, akan retry';
-        break;
+        dotColor = DSColors.errorDark; label = 'Gagal, akan retry'; break;
     }
-
-    return Container(
+    return GlassCard(
+      radius: DSRadius.control,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-            ),
-          ),
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
+          Expanded(child: Text(label, style: DSText.body(color: DSColors.onDark))),
           TextButton.icon(
-            onPressed: syncState.status == SyncStatus.syncing
-                ? null
-                : () => ref.read(syncProvider.notifier).syncUnsyncedData(),
+            onPressed: syncState.status == SyncStatus.syncing ? null : () => ref.read(syncProvider.notifier).syncUnsyncedData(),
             icon: syncState.status == SyncStatus.syncing
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: DSColors.primaryDark))
                 : const Icon(Icons.cloud_upload_outlined, size: 16),
             label: Text(
               syncState.status == SyncStatus.syncing ? 'Mengirim...' : 'Sync',
               style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
+            style: TextButton.styleFrom(foregroundColor: DSColors.primaryDark, padding: const EdgeInsets.symmetric(horizontal: 8)),
           ),
         ],
       ),
@@ -387,87 +406,22 @@ class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerPr
     return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildMetricCard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border, width: 1),
-      ),
+  Widget _buildAccelerometerCard(TrackingState state) {
+    final xN = ((state.accelX + 15) / 30).clamp(0.0, 1.0);
+    final yN = ((state.accelY + 15) / 30).clamp(0.0, 1.0);
+    final zN = ((state.accelZ + 15) / 30).clamp(0.0, 1.0);
+    return GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary, size: 24),
+          Text('AKSELEROMETER REAL-TIME', style: DSText.sectionLabel(color: DSColors.onDarkMuted)),
+          const SizedBox(height: 16),
+          _buildSensorBar('Axis X', state.accelX, xN, DSColors.accentBlue),
           const SizedBox(height: 12),
-          Text(
-            title,
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textSecondary,
-              letterSpacing: 0.05 * 9,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
+          _buildSensorBar('Axis Y', state.accelY, yN, DSColors.primaryDark),
+          const SizedBox(height: 12),
+          _buildSensorBar('Axis Z', state.accelZ, zN, DSColors.accentOrange),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAccelerometerCard(TrackingState state) {
-    // Accelerometer X/Y/Z progress bars
-    // Normal acceleration values ranges usually around -15 to +15.
-    // We can map these to a 0.0 to 1.0 range: (val + 15) / 30.
-    final xValNormalized = ((state.accelX + 15) / 30).clamp(0.0, 1.0);
-    final yValNormalized = ((state.accelY + 15) / 30).clamp(0.0, 1.0);
-    final zValNormalized = ((state.accelZ + 15) / 30).clamp(0.0, 1.0);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'AKSELEROMETER REAL-TIME',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.08 * 10,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSensorBar('Axis X', state.accelX, xValNormalized, Colors.blue),
-            const SizedBox(height: 12),
-            _buildSensorBar('Axis Y', state.accelY, yValNormalized, Colors.green),
-            const SizedBox(height: 12),
-            _buildSensorBar('Axis Z', state.accelZ, zValNormalized, Colors.orange),
-          ],
-        ),
       ),
     );
   }
@@ -479,27 +433,41 @@ class _ActivityPageState extends ConsumerState<ActivityPage> with SingleTickerPr
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-            ),
-            Text(
-              '${val.toStringAsFixed(2)} m/s²',
-              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-            ),
+            Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: DSColors.onDarkMuted)),
+            Text('${val.toStringAsFixed(2)} m/s2',
+                style: GoogleFonts.jetBrainsMono(fontSize: 12, fontWeight: FontWeight.w600, color: DSColors.onDark)),
           ],
         ),
         const SizedBox(height: 6),
         ClipRRect(
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(DSRadius.progressBar),
           child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 6,
-            backgroundColor: AppColors.surface2,
+            value: progress, minHeight: 6,
+            backgroundColor: Colors.white.withOpacity(0.08),
             valueColor: AlwaysStoppedAnimation<Color>(barColor),
           ),
         ),
       ],
     );
   }
+}
+
+class _GridPainter extends CustomPainter {
+  final Color color;
+  final double spacing;
+  _GridPainter({required this.color, required this.spacing});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color..strokeWidth = 0.5..style = PaintingStyle.stroke;
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
